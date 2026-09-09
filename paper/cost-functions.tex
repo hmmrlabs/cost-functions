@@ -16,9 +16,9 @@
 \newcommand{\cost}{\ensuremath{\mathrm{FN}\cdot c + \mathrm{FP}}}
 
 \title{\bfseries What Is a False Negative Worth?\\[2pt]
-\large Grounding Asymmetric Cost in Labor Hours, and the Threshold Bug It Uncovers}
+\large Three Ways an Asymmetric-Cost Analysis Fails Review, and What Survives It}
 
-\author{Kartik Thakore\\\small kartik@multiversal.ventures}
+\author{Kartik Thakore\\\small Hammer Labs\\\small kartik@hammer.ai}
 \date{\today}
 
 \begin{document}
@@ -26,30 +26,35 @@
 
 \begin{abstract}
 \noindent
-Cost-sensitive learning asks practitioners for one number: how many false alarms a missed
-positive is worth. In applied work that number is almost always asserted. We show what
-asserting it costs, on a corpus of 156{,}732 SEC filings labelled for later retraction, and
-we give a procedure for deriving it instead from published labor rates.
+Cost-sensitive learning asks for one number: how many false alarms a missed positive is worth.
+In applied work that number is almost always asserted, and the analysis built on it then has to
+survive somebody whose job is to audit the return. This paper is written for the person doing
+the surviving.
 
-Three findings. First, the ratio decides the result: three independent feature spaces agree
-that our models beat the trivial baseline below $c \approx 5.6$ and lose above it, and the
-constant our own work had inherited, $c = 10$, turned out to be a model-selection key
-borrowed from an unrelated task in another repository. Second, deriving the ratio from the
-measured audit-fee premium of a restatement puts it between 24 and 300, far above the
-crossover, but also reveals that the ratio is a property of \emph{who is asking} rather than
-of the task: a preparer, an investor and a regulator have three different numerators, and one
-of them is not a ratio at all. Third, while measuring this we found that the ratio was not
-even the largest error in our own pipeline. Selecting the decision threshold on in-sample
-scores inflates test cost by up to $5.5\times$. The inflation is governed by how completely
-the model memorises its training set, not by $p/n$ or by model quality, so it is largest for
-the models most likely to be deployed. Calibration provably cannot repair it. Out-of-fold
-selection recovers a median $95\%$ of the loss at the cost of $K$ extra fits and no held-out
-data.
+We report three failure modes, each measured on a corpus of 156{,}732 SEC filings labelled for
+later retraction, plus two public control datasets. \textbf{First, the ratio decides the
+result and is usually borrowed.} Three independent feature spaces agree that our models beat
+the trivial baseline below $c \approx 5.6$ and lose above it, and the constant our own work had
+inherited turned out to be a model-selection key from an unrelated task in another repository.
+\textbf{Second, the baseline may be one nobody can staff.} Under $\mathrm{FN}\cdot c + \mathrm{FP}$
+always-fire pays only the per-review price at any volume, so it wins whenever the base rate
+clears $1/(c+1)$, and a benchmark scored that way reports the base rate while appearing to
+report discrimination. \textbf{Third, and largest, the decision threshold is often selected
+in-sample.} That inflates test cost by up to $5.5\times$, is governed by how completely the
+model memorises its training set rather than by $p/n$ or model quality, and is therefore worst
+for the strongest model on the slide. Calibration provably cannot repair it; out-of-fold
+selection recovers a median $95\%$ of the loss for $K$ extra fits and no held-out data. A
+rolling-origin temporal split leaves the effect the same size, and moves the oracle threshold
+not at all: a forward split does not reduce what a model can achieve, it taxes every strategy
+that has to carry a threshold across it.
 
-We close with a checklist. The practical recommendation is to report a cost sweep rather than
-a point, to derive any point estimate from hours somebody can be asked about, and where the
-seat is ambiguous to evaluate at a stated review capacity instead, since $\mathrm{precision}@k$
-requires no cost ratio at all.
+We give a procedure for deriving the cost ratio from published labor rates rather than
+asserting it, and report where that procedure breaks: the derived ratio depends on the seat the
+model is deployed in, so a task specification that does not name a seat does not determine a
+ratio. Where the seat is genuinely ambiguous, evaluating at a stated review capacity is
+defensible in a way a single asserted ratio is not, because $\mathrm{precision}@k$ requires no
+cost ratio at all. We close with the questions a reviewer will ask and what each of them
+requires you to have already measured.
 \end{abstract}
 
 \section{Introduction}
@@ -60,11 +65,19 @@ response is a cost-sensitive loss,
 \[
 \text{cost} \;=\; \mathrm{FN}\cdot c \;+\; \mathrm{FP},
 \]
-and the standard practice is to pick $c$ by assertion: a round number, a number from a paper
-in the same domain, a number a stakeholder offered in a meeting.
+and the standard practice is to pick $c$ by assertion: a round number, a number from a paper in
+the same domain, a number a stakeholder offered in a meeting.
 
-This paper is about what that costs. It is written for practitioners, and every claim in it is
-measured on real data with code and seeds fixed.
+Then somebody audits the return. The analysis has to hold up in a room where the question is
+not whether the model is interesting but where each number came from, and a figure whose
+provenance is ``it is what people use'' does not survive that room. This paper is written for
+that seat: the analyst, data science lead or consultant who did the work and now has to defend
+it, rather than for the person doing the auditing and rather than for a methods audience.
+
+What that reader needs is not a finding. It is to know which parts of the analysis will be
+attacked, what each attack costs if it lands, and what has to have been measured beforehand for
+the answer to be more than an opinion. So the paper is organised as three failure modes, in
+increasing order of how much they cost and how hard they are to see.
 
 \paragraph{Contributions.}
 \begin{enumerate}[label=(\arabic*)]
@@ -377,6 +390,62 @@ firing rate moves only from $0.289$ to $0.340$ as $c$ goes from 3 to 20, when th
 $0.637$. Scores piled at 0 and 1 mean that dragging the threshold to $0.048$ crosses almost no
 rows, so the rule cannot respond to $c$ at all.
 
+\subsection{A forward split leaves it the same size, and does not move the oracle}
+\label{sec:temporal}
+
+Every result above splits by company. A reviewer of a financial prediction will not accept that,
+because a deployment only ever holds the past, so we ran a rolling origin with a gap block: train
+on filings from years $[Y{-}4, Y]$, select on $Y{+}1$, report on $Y{+}2$, at five origins.
+\textbf{Each origin is run twice, once forward in time and once by company over the identical
+pooled rows at identical block sizes}, because a temporal number on its own cannot say whether
+anything changed. 240 cells.
+
+\begin{center}\small
+\begin{tabular}{lrrrrr}
+\toprule
+$\mathrm{S0}/\mathrm{S4}$ & $c{=}3$ & $c{=}5$ & $c{=}10$ & $c{=}20$ & all \\
+\midrule
+temporal            & 1.077 & 1.022 & 1.182 & 1.662 & 1.236 \\
+company             & 1.028 & 0.994 & 1.171 & 1.619 & 1.203 \\
+paired difference   & $+0.049$ & $+0.028$ & $+0.010$ & $+0.043$ & $+0.033$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The in-sample penalty is larger under the temporal split in 66 of 120 paired cells, which is a
+coin flip, and dropping any single origin moves the difference between $+0.004$ and $+0.071$ on a
+baseline of 1.20. A prior that distribution shift multiplies the memorisation effect predicts
+something on the scale of the effect itself, which is 20 to 66 percent; six percent is not that.
+\textbf{We report it as the same size and give no growth factor.}
+
+What a forward split does instead is more interesting, and it is visible in the regret column:
+
+\begin{center}\small
+\begin{tabular}{lrrr}
+\toprule
+mean regret against the oracle & temporal & company & ratio \\
+\midrule
+S0 in-sample         & 0.315 & 0.230 & 1.37 \\
+S1 out-of-fold       & 0.101 & 0.045 & 2.25 \\
+S4 validation        & 0.068 & 0.032 & 2.12 \\
+\midrule
+oracle, absolute cost & 0.900 & 0.890 & 1.01 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{The oracle does not move.} The best threshold obtainable on the test block costs the same
+whether that block was reached by calendar or by company, so a forward split does not reduce what
+the model can achieve. It taxes every strategy that has to \emph{carry} a threshold across the
+split, and the oracle carries none. The careful strategies pay proportionally more: out-of-fold
+and held-out selection roughly double their regret, while the in-sample threshold, already bad,
+worsens by 37 percent.
+
+For the reader defending an analysis, that is the useful form of the result. A reviewer asking
+``does this hold up out of time'' is asking two questions at once, and they have different
+answers: the model's achievable performance is unchanged, and the cost of transferring an
+operating point roughly doubles.
+
 \subsection{What does work is a size rule}
 
 \begin{table}[t]
@@ -397,40 +466,66 @@ worst case $1.966$ against $1.123$.}
 \label{tab:size}
 \end{table}
 
-The residual gap at small $n$ is a \emph{bias}: out-of-fold models are fitted on $(K{-}1)/K$ of an
-already small set, so their scores separate less and the threshold lands low. Two natural
-refinements that attack \emph{variance} therefore buy nothing, which we verified: averaging
+Two natural refinements that attack \emph{variance} buy nothing, which we verified: averaging
 out-of-fold scores over three repeats and taking a bootstrap-median threshold both move the mean
-by less than $0.03$ and the repeated variant is marginally worse in the tail. We record this so
-that others do not spend the afternoon.
+by less than $0.03$, and the repeated variant is marginally worse in the tail.
 
-\section{A checklist}
+We do not have an explanation for the residual gap at small $n$, and record a rejected one. If it
+were simply that out-of-fold models are fitted on $(K{-}1)/K$ of an already small set, raising $K$
+would close it. Sweeping $K \in \{2, 5, 10, 20\}$ does not: the out-of-fold minus validation gap
+runs $0.078$, $0.041$, $0.110$, $0.112$, which is non-monotone and worst at the largest $K$. That
+sweep is not a clean comparison, since the $K{=}5$ cells carry more seeds than the others, but
+nothing in it supports the mechanism, so the residual stays unexplained.
+
+\section{What a reviewer will ask, and what it requires you to have measured}
+
+Each of these is a question that arrives in the room, the answer that survives it, and the thing
+that must already have been measured for the answer to be more than an opinion.
 
 \begin{enumerate}[label=\textbf{\arabic*.}]
-\item \textbf{Name the seat before naming the ratio.} If you cannot say who acts on the
-prediction and what they do differently, you do not have a cost ratio; you have a missing problem
-statement.
-\item \textbf{Derive $c$ from hours, and report the grid.} Both halves are answerable. A point
-estimate hides the uncertainty that decides the result.
-\item \textbf{Never report a single-ratio asymmetric cost as a finding.} ``The model does not beat
-the baseline'' is not a result. ``The model does not beat the baseline above $5.75{:}1$'' is a
-different one, and a reader can act on it.
-\item \textbf{Check whether your baseline is purchasable.} If always-fire is in the choice set at
-$100\%$ volume with no capacity charge, your benchmark is measuring the base rate.
-\item \textbf{Never select a threshold on in-sample scores.} Up to $5.5\times$, worst for your
-best model, invisible in every metric you are already reporting.
-\item \textbf{Out-of-fold when $n$ is large, held-out when $n$ is small.} Skip the variance
-refinements; the residual is bias.
-\item \textbf{Do not reach for calibration to fix a threshold.} It is provably inert unless your
-rule reads values rather than ranks.
-\item \textbf{Where the seat is ambiguous, report $\mathrm{precision}@k$ at a stated capacity.} It
-needs no cost ratio and it is the decision the operator actually faces.
+\item \textbf{``Where did that cost ratio come from?''} Derive it from hours, and report the grid
+rather than the point: hours a miss eventually costs, over hours one review costs. Both halves
+are answerable by an operations lead. \emph{Requires:} your own review time per case, and a
+published or internal figure for downstream cleanup. Neither is in a vendor's deck.
+
+\item \textbf{``Who is this cost ratio for?''} Name the seat before naming the number. A
+preparer, an investor and a regulator have three different numerators for the same prediction,
+and one of them does not reduce to a ratio at all. \emph{Requires:} a sentence saying who acts on
+the prediction and what they do differently when it fires. If you cannot write it, you do not
+have a cost ratio, you have a missing problem statement.
+
+\item \textbf{``So should we just review everything?''} Sometimes yes, and saying so is what
+makes the rest credible. At the ratio our domain implies, always-fire is correct on cost and
+loses only because it cannot be staffed. \emph{Requires:} the review capacity, stated as a
+number. Then report $\mathrm{precision}@k$ against it, which needs no cost ratio.
+
+\item \textbf{``Why is production worse than the pilot?''} Because the threshold was chosen
+in-sample. Choose it out of fold, or on a held-out block when the training set is small, and say
+which in the write-up. \emph{Requires:} nothing you do not already have. $K$ extra fits.
+
+\item \textbf{``Does this hold up out of time?''} Two questions with different answers. The
+model's achievable cost is unchanged under a forward split; the cost of carrying an operating
+point across one roughly doubles (\S\ref{sec:temporal}). \emph{Requires:} a rolling origin, and a
+same-size company split beside it, because a temporal number alone cannot say whether anything
+moved.
+
+\item \textbf{``What is the basis of this number?''} Tag every figure as measured, cited or
+assumed, and let anything computed from a mix inherit the weakest. An annual saving computed from
+a measured catch rate and an assumed hourly rate is an assumption, and a write-up that says so
+survives a reviewer who was going to find out anyway.
 \end{enumerate}
+
+\paragraph{What not to do.} Do not reach for calibration to fix a threshold; it is provably inert
+unless the decision rule reads score values rather than ranks. Do not report a single-ratio
+asymmetric cost as a finding: ``the model does not beat the baseline'' is not a result, while
+``the model does not beat the baseline above $5.75{:}1$'' is a different one that a reader can act
+on. Do not spend effort on variance reduction in threshold selection; the residual is not
+variance, and we could not establish what it is.
 
 \section{Limitations}
 
-Three seeds on most cells and eight on two; a temporal split is reported separately and the
-company split is the primary one here. The hours derivation rests on the auditor's side of the
+Three seeds on most cells, eight on the two headline cells, and two on the temporal grid; the company split is primary and the temporal one is
+Section~\ref{sec:temporal}. The hours derivation rests on the auditor's side of the
 cost, which is published, and treats the company's internal effort as unmeasured rather than
 zero, so Table~\ref{tab:hours} is a lower bound on $H_\text{miss}$ and its detection-rate axis is
 a stated guess rather than a measurement. Two of the three model families are tree ensembles, so
