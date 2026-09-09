@@ -46,7 +46,7 @@ from pathlib import Path
 HERE = Path(__file__).parent
 DOCS = HERE / "raw" / "docs"
 SUBS = HERE / "raw" / "submissions"
-UA = {"User-Agent": "hammer-bench research kartik@multiversal.ventures"}
+UA = {"User-Agent": "hammer-bench research kartik@hammer.ai"}
 SLEEP = 0.15
 
 MONTHS = {

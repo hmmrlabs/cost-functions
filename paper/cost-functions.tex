@@ -405,15 +405,15 @@ anything changed. 240 cells.
 \toprule
 $\mathrm{S0}/\mathrm{S4}$ & $c{=}3$ & $c{=}5$ & $c{=}10$ & $c{=}20$ & all \\
 \midrule
-temporal            & 1.077 & 1.022 & 1.182 & 1.662 & 1.236 \\
-company             & 1.028 & 0.994 & 1.171 & 1.619 & 1.203 \\
-paired difference   & $+0.049$ & $+0.028$ & $+0.010$ & $+0.043$ & $+0.033$ \\
+temporal            & 1.076 & 1.031 & 1.180 & 1.663 & 1.238 \\
+company             & 1.026 & 0.997 & 1.163 & 1.625 & 1.203 \\
+paired difference   & $+0.050$ & $+0.034$ & $+0.017$ & $+0.038$ & $+0.035$ \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-The in-sample penalty is larger under the temporal split in 66 of 120 paired cells, which is a
-coin flip, and dropping any single origin moves the difference between $+0.004$ and $+0.071$ on a
+The in-sample penalty is larger under the temporal split in 69 of 120 paired cells, which is a
+coin flip, and dropping any single origin moves the difference between $+0.009$ and $+0.067$ on a
 baseline of 1.20. A prior that distribution shift multiplies the memorisation effect predicts
 something on the scale of the effect itself, which is 20 to 66 percent; six percent is not that.
 \textbf{We report it as the same size and give no growth factor.}
@@ -425,11 +425,11 @@ What a forward split does instead is more interesting, and it is visible in the 
 \toprule
 mean regret against the oracle & temporal & company & ratio \\
 \midrule
-S0 in-sample         & 0.315 & 0.230 & 1.37 \\
-S1 out-of-fold       & 0.101 & 0.045 & 2.25 \\
-S4 validation        & 0.068 & 0.032 & 2.12 \\
+S0 in-sample         & 0.320 & 0.231 & 1.38 \\
+S1 out-of-fold       & 0.102 & 0.044 & 2.30 \\
+S4 validation        & 0.069 & 0.033 & 2.08 \\
 \midrule
-oracle, absolute cost & 0.900 & 0.890 & 1.01 \\
+oracle, absolute cost & 0.901 & 0.890 & 1.01 \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -439,7 +439,7 @@ whether that block was reached by calendar or by company, so a forward split doe
 the model can achieve. It taxes every strategy that has to \emph{carry} a threshold across the
 split, and the oracle carries none. The careful strategies pay proportionally more: out-of-fold
 and held-out selection roughly double their regret, while the in-sample threshold, already bad,
-worsens by 37 percent.
+worsens by 38 percent.
 
 For the reader defending an analysis, that is the useful form of the result. A reviewer asking
 ``does this hold up out of time'' is asking two questions at once, and they have different

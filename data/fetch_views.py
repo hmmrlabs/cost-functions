@@ -45,7 +45,7 @@ HERE = Path(__file__).parent
 BODIES = HERE / "raw" / "bodies"
 FACTS = HERE / "raw" / "facts"
 SUBS = HERE / "raw" / "submissions"
-UA = {"User-Agent": "hammer-bench research kartik@multiversal.ventures"}
+UA = {"User-Agent": "hammer-bench research kartik@hammer.ai"}
 SLEEP = 0.15
 
 # Item 7 is MD&A in a 10-K, Item 2 in a 10-Q. Item 1A is risk factors. Both are matched

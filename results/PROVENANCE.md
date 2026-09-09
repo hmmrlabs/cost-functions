@@ -3,9 +3,8 @@
 The filing an Item 4.02 repudiates, resolved from the 4.02 itself, so that a restatement
 event can be used as a label over two views of the document it condemns.
 
-Built 2026-09-08. The design it answers is
-`hammer-worldmodel/docs/superpowers/specs/2026-09-08-cross-document-disagreement-design.md`,
-which names the join rate as the first number and says to stop if it is poor.
+Built 2026-09-08. The design it answers is an internal specification, not in this repository, which names
+the join rate as the first number to check and says to stop if it is poor.
 
 **Read this file in order, because the first rule in it was refuted by the second.** The
 positional join below was the gate measurement; verifying it against the filings' own prose cut

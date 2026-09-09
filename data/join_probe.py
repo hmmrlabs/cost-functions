@@ -44,7 +44,7 @@ HERE = Path(__file__).parent
 RAW = HERE / "raw" / "submissions"
 HITS = HERE.parent / "sec-8k-402" / "raw" / "efts-hits.jsonl"
 UA = {
-    "User-Agent": "hammer-bench research kartik@multiversal.ventures",
+    "User-Agent": "hammer-bench research kartik@hammer.ai",
     "Accept": "application/json",
 }
 # The forms a 4.02 can repudiate. An 8-K carries no financial statements to restate.
