@@ -1,0 +1,475 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1.15in]{geometry}
+\usepackage{booktabs}
+\usepackage{amsmath,amssymb}
+\usepackage{microtype}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage{titlesec}
+
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries}{\thesubsection}{0.6em}{}
+\setlist{itemsep=2pt,topsep=4pt,parsep=0pt}
+
+\newcommand{\cost}{\ensuremath{\mathrm{FN}\cdot c + \mathrm{FP}}}
+
+\title{\bfseries What Is a False Negative Worth?\\[2pt]
+\large Grounding Asymmetric Cost in Labor Hours, and the Threshold Bug It Uncovers}
+
+\author{Kartik Thakore\\\small kartik@multiversal.ventures}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+Cost-sensitive learning asks practitioners for one number: how many false alarms a missed
+positive is worth. In applied work that number is almost always asserted. We show what
+asserting it costs, on a corpus of 156{,}732 SEC filings labelled for later retraction, and
+we give a procedure for deriving it instead from published labor rates.
+
+Three findings. First, the ratio decides the result: three independent feature spaces agree
+that our models beat the trivial baseline below $c \approx 5.6$ and lose above it, and the
+constant our own work had inherited, $c = 10$, turned out to be a model-selection key
+borrowed from an unrelated task in another repository. Second, deriving the ratio from the
+measured audit-fee premium of a restatement puts it between 24 and 300, far above the
+crossover, but also reveals that the ratio is a property of \emph{who is asking} rather than
+of the task: a preparer, an investor and a regulator have three different numerators, and one
+of them is not a ratio at all. Third, while measuring this we found that the ratio was not
+even the largest error in our own pipeline. Selecting the decision threshold on in-sample
+scores inflates test cost by up to $5.5\times$. The inflation is governed by how completely
+the model memorises its training set, not by $p/n$ or by model quality, so it is largest for
+the models most likely to be deployed. Calibration provably cannot repair it. Out-of-fold
+selection recovers a median $95\%$ of the loss at the cost of $K$ extra fits and no held-out
+data.
+
+We close with a checklist. The practical recommendation is to report a cost sweep rather than
+a point, to derive any point estimate from hours somebody can be asked about, and where the
+seat is ambiguous to evaluate at a stated review capacity instead, since $\mathrm{precision}@k$
+requires no cost ratio at all.
+\end{abstract}
+
+\section{Introduction}
+
+A practitioner building a detector for a business process is handed an asymmetric problem. A
+missed fraud, a missed defect, a missed restatement is worse than a false alarm. The standard
+response is a cost-sensitive loss,
+\[
+\text{cost} \;=\; \mathrm{FN}\cdot c \;+\; \mathrm{FP},
+\]
+and the standard practice is to pick $c$ by assertion: a round number, a number from a paper
+in the same domain, a number a stakeholder offered in a meeting.
+
+This paper is about what that costs. It is written for practitioners, and every claim in it is
+measured on real data with code and seeds fixed.
+
+\paragraph{Contributions.}
+\begin{enumerate}[label=(\arabic*)]
+\item \textbf{We show the ratio decides the answer, and quantify where the decision flips.} On
+our corpus the crossover is $c \in [5.5, 5.75]$ across three unrelated feature spaces. Below
+it every model beats the trivial baseline; above it every model loses. Nothing about the
+models changes.
+\item \textbf{We give a procedure for grounding $c$ in labor hours} and run it. This is, to our
+knowledge, the first attempt in this literature to derive an asymmetric cost ratio from
+published compensation and fee data rather than assert it.
+\item \textbf{We identify a failure of that procedure that is not a data gap.} The derived
+ratio depends on the seat the model is deployed in, and a task specification that does not
+name a seat does not determine a ratio. We argue this is common and under-recognised.
+\item \textbf{We report a threshold-selection artefact} worth up to $5.5\times$ in test cost,
+establish its mechanism, show that the obvious remedy provably cannot work, and benchmark eight
+remedies that can.
+\end{enumerate}
+
+\section{The ratio is asserted, not measured}
+\label{sec:asserted}
+
+Cost-sensitive learning has a mature theory \citep{elkan2001,provost2001} and mature machinery:
+MetaCost, class weighting, instance-dependent variants \citep{bahnsen2014}. The theory takes
+the cost matrix as given. The applied literature then supplies it by assertion. Surveying
+recent financial-misstatement work, we found ratios of $6.46{:}1$ and similar figures stated
+without derivation.
+
+Our own case is worse and is instructive. Our repository's constant traced to a single table
+row in a different repository:
+
+\begin{quote}\small
+\texttt{| selection | val flip-pair accuracy | val asymmetric key (missed$\times$10 + false) |}
+\end{quote}
+
+It was the metric used to select a training epoch, for a different model, on 178 synthesised
+rows, answering a different question. It was never a claim about our domain. Every result we
+had published was reported against it as though it described the world.
+
+An unmeasured constant is at least a guess about the right domain. This one had crossed a
+repository, a corpus and a decision problem. We suspect this is not rare.
+
+\section{The ratio decides the result}
+\label{sec:sweep}
+
+\paragraph{Setup.} 156{,}732 SEC filings from 5{,}085 companies, 2004--2024. Labels come from
+8-K Item 4.02, the item a registrant files to state that previously issued financials should no
+longer be relied upon; the 8-K names the filings it retracts, so labels are mechanical rather
+than annotated. Two views per filing: narrative section text, and XBRL facts. Splits are by
+company throughout, never by row, because filings from one company are not independent.
+
+We score each arm against \emph{the best floor}, which is the cheaper of always-fire
+($\text{cost} = \mathrm{N}$) and never-fire ($\text{cost} = \mathrm{P}\cdot c$) at that ratio.
+Which floor wins is itself a function of $c$, so comparing against a fixed one confounds two
+effects.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{lccc}
+\toprule
+$c$ & XBRL arm & narrative arm & embedding arm \\
+\midrule
+3  & 0.652 & 0.576 & 0.661 \\
+5  & 0.903 & 0.882 & 0.916 \\
+10 & 1.572 & 1.407 & 1.273 \\
+\bottomrule
+\end{tabular}
+\caption{Arm cost over the best floor. Below 1.0 the model wins. Same models, same rows, same
+split; only $c$ moves. On a quarter-point grid the crossover is 5.5, 5.75 and 5.5.}
+\label{tab:sweep}
+\end{table}
+
+Table~\ref{tab:sweep} is the whole argument of Section~\ref{sec:asserted} in one place. Three
+feature spaces with nothing in common agree on the crossover to within a quarter of a point,
+and the constant we had inherited sits on the far side of it.
+
+\subsection{What the linear form hides}
+
+The form itself has a defect independent of the constant. Under \cost{}, always-fire reviews
+$100\%$ of cases and pays only the per-review price. It is therefore purchasable at any scale,
+and it wins whenever the base rate clears $1/(c+1)$.
+
+\begin{quote}
+\emph{No ranking model can beat a strategy that takes every positive by taking every row.}
+\end{quote}
+
+A corpus scored this way is answering ``is the base rate high'' while appearing to answer ``does
+the model discriminate.'' Writing the cost per row with base rate $\pi$,
+\[
+\frac{\text{cost}}{n} \;=\; c\,\pi\,(1-\mathrm{TPR}) \;+\; (1-\pi)\,\mathrm{FPR},
+\]
+always-fire is the ROC point $(1,1)$, and a model beats it exactly when
+\[
+c \;<\; \underbrace{\frac{1-\pi}{\pi}}_{\text{odds of a negative}}\;\cdot\;
+\underbrace{\max_{\mathrm{ROC}} \frac{1-\mathrm{FPR}}{1-\mathrm{TPR}}}_{\text{base-rate free}} .
+\]
+This is a restatement of iso-performance analysis \citep{provost2001} and is not new geometry.
+What is worth saying to practitioners is the consequence: the contest is decided by the steepest
+line from the \emph{top-right} corner down to the ROC curve, and a model can have excellent AUC
+while being flat exactly there. Reading a ROC curve from $(0,0)$ tells you nothing about it.
+
+\section{Grounding the ratio in labor hours}
+\label{sec:hours}
+
+If the ratio must be supplied, supply it from something a person can be asked about. Both halves
+of the following are answerable by an operations lead:
+\[
+c \;=\; \frac{\text{hours a miss eventually costs}}{\text{hours one review costs}} .
+\]
+
+\paragraph{The recipe.}
+\begin{enumerate}[label=\textbf{\arabic*.}]
+\item \textbf{Name the seat.} Who acts on the prediction, and what do they do differently when
+it fires? This step is not optional; Section~\ref{sec:seat} is what happens when it is skipped.
+\item \textbf{Price the review.} Hours per case at that seat, times a loaded rate. Triage and
+full review differ by an order of magnitude and the answer moves with them.
+\item \textbf{Price the miss, in the same units.} Published fee premia, remediation studies,
+incident post-mortems, and internal time-tracking are all admissible. State which.
+\item \textbf{Apply the detection discount.} A flagged case only avoids the downstream cost if
+the review actually finds the problem. Multiply by that rate, call it $d$, and be explicit that
+you are guessing at it if you are.
+\item \textbf{Report the grid, not the point.} Steps 2 to 4 each carry uncertainty. A table
+across their plausible ranges is a result; a single number is a claim you cannot support.
+\end{enumerate}
+
+\paragraph{Worked example.} An interim restatement carries a mean audit fee premium of
+\$191{,}000, the gap between a restating client's \$1.583M mean fee and the \$1.392M it would
+otherwise have paid \citep{interim2025}. At the published US blended range of \$150 to \$450 per
+hour that is 424 to 1{,}273 professional hours. It is the auditor alone; internal controller,
+legal and consultant hours do not appear in any standardised disclosure, so this is a lower
+bound rather than an estimate. Taking $H_\text{miss} = 760$ hours (the midpoint rate):
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{lrrrrr}
+\toprule
+detection rate $d$ & 0.25\,h review & 0.5\,h & 1\,h & 4\,h & 8\,h \\
+\midrule
+0.10 & 304  & 152  & 76  & 19 & \textbf{10} \\
+0.25 & 760  & 380  & 190 & 48 & 24 \\
+0.50 & 1520 & 760  & 380 & 95 & 48 \\
+1.00 & 3040 & 1520 & 760 & 190 & 95 \\
+\bottomrule
+\end{tabular}
+\caption{Implied $c$, from $c = d \cdot H_\text{miss} / H_\text{review}$ with
+$H_\text{miss}=760$ professional hours. One cell in twenty reaches the constant our work had
+been using, and it is the corner: a review that finds the problem one time in ten, costing a
+full working day.}
+\label{tab:hours}
+\end{table}
+
+Every cell but one is between two and three hundred times the asserted constant, and the
+crossover from Table~\ref{tab:sweep} is 5.5. The practical reading is uncomfortable and worth
+stating plainly: \textbf{at the ratio the domain actually implies, flagging everything is
+correct on cost, and no model in this study was ever going to win that argument.}
+
+\subsection{The seat problem}
+\label{sec:seat}
+
+The 760 hours belongs to a seat our corpus does not occupy, and noticing this is the most
+transferable result in the paper.
+
+Our task is post-filing: given a document already filed, predict whether it will later be
+retracted. Flagging it \emph{does not prevent the restatement}. The error is in the numbers and
+the remediation happens either way. What early detection buys depends on who is asking:
+
+\begin{itemize}
+\item \textbf{A preparer or auditor, before filing.} Catching it here does avoid the cost, and
+760 hours is the right numerator. But this seat cannot be our corpus, because the label only
+exists after the fact.
+\item \textbf{An investor.} A miss is holding a position through an announcement effect of
+roughly $-9.2\%$ \citep{gao2002}. The cost scales with position size, so a unitless ratio
+against ``one analyst hour'' is not the right shape for the question.
+\item \textbf{A regulator or reviewer triaging filings.} The remediation happens regardless.
+What is bought is \emph{earlier}, valued in months rather than in hours avoided.
+\end{itemize}
+
+\begin{quote}
+\emph{A task specification that does not name a seat does not determine a cost ratio.}
+\end{quote}
+
+This is not a gap that better data fills. It is a statement about what the task is. We suspect
+many benchmark tasks with asserted cost matrices are in this position, and that the asserted
+constant is doing the work of a missing problem statement.
+
+\paragraph{The way out.} Where the seat is genuinely ambiguous, evaluate at a stated
+\emph{capacity} instead. A reviewer has $k$ slots, so the decision is a queue and not a label,
+and always-fire leaves the choice set because it cannot say which $k$ to open.
+$\mathrm{precision}@k$ requires no cost ratio at all \citep{consequentialist2025}, only a number
+every operations team already knows.
+
+The change is not cosmetic. Under a top-$1\%$ budget on the 2021 window, our narrative arm's
+top 11 ranked filings are all later-retracted, and so are its top 22: it reaches the $1/\pi$
+ceiling exactly. Under $\mathrm{FN}\cdot 10 + \mathrm{FP}$ the same arm on the same scores reads
+as $41\%$ worse than useless. Both statements are true, and only one describes something a team
+could staff.
+
+\section{The threshold was a larger error than the ratio}
+\label{sec:threshold}
+
+While measuring the above we found a defect in our own pipeline that dominated it, and that we
+believe is widespread because it is invisible.
+
+A score is not a decision. Somewhere a threshold is chosen. Our code, and much applied code,
+chose it by sweeping the model's scores \emph{on the rows the model was fitted on}.
+
+\subsection{Measurement}
+
+Table~\ref{tab:strategies} benchmarks eight threshold-placement strategies over 180 cells:
+5 datasets $\times$ 3 seeds $\times$ 3 models $\times$ 4 cost ratios. Datasets are our SEC arms
+plus two public controls, \texttt{bank-marketing} and \texttt{creditcard}, both from OpenML.
+Models are a random forest, histogram gradient boosting, and $L_2$ logistic regression.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{lrrrrrr}
+\toprule
+strategy & mean & median & worst & mean rank & regret & $>$floor \\
+\midrule
+S4 held-out validation      & 0.695 & 0.670 & 1.242 & 3.09 & 0.033 & 13\% \\
+S6 analytic + OOF isotonic  & 0.765 & 0.689 & 1.968 & 4.61 & 0.103 & 23\% \\
+S1 out-of-fold (5-fold)     & 0.766 & 0.702 & 1.966 & 3.49 & 0.105 & 23\% \\
+S3 OOF, bootstrap median    & 0.768 & 0.682 & 1.966 & 4.08 & 0.106 & 23\% \\
+S2 OOF, 3 repeats averaged  & 0.778 & 0.697 & 2.200 & 4.03 & 0.117 & 23\% \\
+S7 firing-rate match        & 0.809 & 0.696 & 2.290 & 4.83 & 0.147 & 25\% \\
+S5 analytic $1/(1+c)$, raw  & 0.851 & 0.696 & 3.551 & 5.14 & 0.189 & 23\% \\
+S0 in-sample                & 1.156 & 0.910 & 4.581 & 6.72 & 0.494 & 39\% \\
+\bottomrule
+\end{tabular}
+\caption{Eight threshold strategies, 180 cells, cost over the best floor. \emph{regret} is the
+mean gap to an oracle threshold chosen on test, which is the only column that isolates the line
+from the model. \emph{$>$floor} is how often the strategy did worse than flagging everything.}
+\label{tab:strategies}
+\end{table}
+
+In-sample selection is dominated on every column. Its worst case is $4.581$, its regret is
+$4.7\times$ the next worst strategy, and it is worse than doing nothing in $39\%$ of cells.
+
+\subsection{It is worst for the models you would deploy}
+
+The natural objection is that a weak model produced this. The opposite holds.
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{llrrrr}
+\toprule
+dataset & model & $p/n$ & train AUC & inflation @ $c{=}20$ & val/floor \\
+\midrule
+bank-marketing & $L_2$ logistic  & 0.002 & 0.909 & 1.00--1.02 & 0.36 \\
+bank-marketing & random forest   & 0.002 & 1.000 & \textbf{4.90--5.51} & 0.29 \\
+SEC narrative  & gradient boost  & 1.385 & 1.000 & 2.62--3.76 & 0.90 \\
+SEC embedding  & $L_2$ logistic  & 0.354 & 0.908 & 0.96--1.14 & 0.96 \\
+\bottomrule
+\end{tabular}
+\caption{Inflation is the cost of a train-selected threshold over a validation-selected one, on
+identical test rows, three seeds. Rows one and two are the same dataset, the same 22{,}605
+training rows, the same 51 features and the same splits.}
+\label{tab:strong}
+\end{table}
+
+Across all cells, every model reaching a training AUC of exactly $1.000$ shows the artefact
+(inflation $1.27$ to $5.51$); no model at $0.91$ does ($1.00$ to $1.14$). The governing variable
+is \textbf{train-set memorisation}, not $p/n$ and not model quality. Our own first analysis
+attributed it to $p/n$; that was an artefact of having only one learner, and Table~\ref{tab:strong}
+refutes it.
+
+\subsection{Mechanism: firing-rate drift}
+
+A threshold is chosen so that some fraction of training rows fires. Applied to new rows it fires
+on a different fraction, and that drift is what the cost pays for.
+
+\begin{center}\small
+\begin{tabular}{lrrr}
+\toprule
+model (bank, $c{=}20$) & fires on train & fires on test & inflation \\
+\midrule
+random forest    & 0.117 & 0.050 & 4.90 \\
+$L_2$ logistic   & 0.410 & 0.417 & 1.00 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The forest's threshold was set to fire on one case in nine and fires on one in twenty. AUC gap
+does \emph{not} predict the magnitude and drift does: AUC gap is a mismatch in \emph{ranking},
+while a threshold is exposed to a mismatch in the score \emph{distribution} at the operating
+point. This is why an uncalibrated forest, whose training scores pile at 0 and 1, is the worst
+offender in the grid despite ranking well.
+
+\subsection{Calibration cannot fix it, and this is a proof rather than a measurement}
+
+The obvious remedy is calibration. It does nothing, in all 84 cells we ran, identically to four
+decimal places.
+
+A calibrator is a monotone map. For strictly increasing $g$, $\{s \ge t\} = \{g(s) \ge g(t)\}$,
+so the family of achievable confusion matrices is unchanged and so is its cost-optimal member.
+Isotonic regression is non-decreasing rather than strictly increasing, so ties could in principle
+break differently; across 84 cells they never did.
+
+Calibration fixes what a score \emph{means}. This is a problem about which rows a score
+\emph{selects}.
+
+\paragraph{Where calibration does earn its keep.} The analytic Bayes rule for this loss is to
+fire when $p > 1/(1+c)$, since firing costs $(1-p)$ and not firing costs $p\,c$. That rule reads
+the score's \emph{value} rather than its rank, so a calibrator is exactly what it needs. Applied
+to out-of-fold isotonic scores it reproduces the empirical out-of-fold sweep in all 180 cells
+(S6 versus S1 in Table~\ref{tab:strategies}: $0.765$ against $0.766$, worst case $1.968$ against
+$1.966$). One tool, inert where the procedure reads ranks and load-bearing where it reads values.
+
+Applied to \emph{raw} model output it fails on saturation, not on miscalibration: boosting's
+firing rate moves only from $0.289$ to $0.340$ as $c$ goes from 3 to 20, when the sweep wants
+$0.637$. Scores piled at 0 and 1 mean that dragging the threshold to $0.048$ crosses almost no
+rows, so the rule cannot respond to $c$ at all.
+
+\subsection{What does work is a size rule}
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{lrrrr}
+\toprule
+dataset & train $n$ & in-sample & out-of-fold & validation \\
+\midrule
+bank-marketing        & 22{,}605 & 0.672 & \textbf{0.399} & 0.399 \\
+bank-marketing (cap)  & 300      & 1.201 & 0.699 & 0.656 \\
+SEC XBRL              & 2{,}167  & 1.178 & 0.874 & \textbf{0.772} \\
+SEC narrative         & 2{,}167  & 1.398 & 0.912 & \textbf{0.795} \\
+\bottomrule
+\end{tabular}
+\caption{Mean cost over floor. At 22{,}605 training rows out-of-fold is free and exactly as good
+as spending a quarter of the data. At 2{,}167 it is not, and the tail is louder than the mean:
+worst case $1.966$ against $1.123$.}
+\label{tab:size}
+\end{table}
+
+The residual gap at small $n$ is a \emph{bias}: out-of-fold models are fitted on $(K{-}1)/K$ of an
+already small set, so their scores separate less and the threshold lands low. Two natural
+refinements that attack \emph{variance} therefore buy nothing, which we verified: averaging
+out-of-fold scores over three repeats and taking a bootstrap-median threshold both move the mean
+by less than $0.03$ and the repeated variant is marginally worse in the tail. We record this so
+that others do not spend the afternoon.
+
+\section{A checklist}
+
+\begin{enumerate}[label=\textbf{\arabic*.}]
+\item \textbf{Name the seat before naming the ratio.} If you cannot say who acts on the
+prediction and what they do differently, you do not have a cost ratio; you have a missing problem
+statement.
+\item \textbf{Derive $c$ from hours, and report the grid.} Both halves are answerable. A point
+estimate hides the uncertainty that decides the result.
+\item \textbf{Never report a single-ratio asymmetric cost as a finding.} ``The model does not beat
+the baseline'' is not a result. ``The model does not beat the baseline above $5.75{:}1$'' is a
+different one, and a reader can act on it.
+\item \textbf{Check whether your baseline is purchasable.} If always-fire is in the choice set at
+$100\%$ volume with no capacity charge, your benchmark is measuring the base rate.
+\item \textbf{Never select a threshold on in-sample scores.} Up to $5.5\times$, worst for your
+best model, invisible in every metric you are already reporting.
+\item \textbf{Out-of-fold when $n$ is large, held-out when $n$ is small.} Skip the variance
+refinements; the residual is bias.
+\item \textbf{Do not reach for calibration to fix a threshold.} It is provably inert unless your
+rule reads values rather than ranks.
+\item \textbf{Where the seat is ambiguous, report $\mathrm{precision}@k$ at a stated capacity.} It
+needs no cost ratio and it is the decision the operator actually faces.
+\end{enumerate}
+
+\section{Limitations}
+
+Three seeds on most cells and eight on two; a temporal split is reported separately and the
+company split is the primary one here. The hours derivation rests on the auditor's side of the
+cost, which is published, and treats the company's internal effort as unmeasured rather than
+zero, so Table~\ref{tab:hours} is a lower bound on $H_\text{miss}$ and its detection-rate axis is
+a stated guess rather than a measurement. Two of the three model families are tree ensembles, so
+the saturation finding may not transfer to deep models whose score distributions differ. The
+oracle threshold fits one free parameter to the test set and is reported as a bound rather than
+an achievable number.
+
+\section{Related work}
+
+Cost-sensitive learning theory \citep{elkan2001} and ROC iso-performance analysis
+\citep{provost2001} give the geometry we re-derive in Section~\ref{sec:sweep}; our contribution
+there is the empirical crossover and the observation that it sits inside the range of asserted
+constants. Instance-dependent cost \citep{bahnsen2014} motivated our firm-size weighting
+experiment, which was a null. \citet{consequentialist2025} argue for $\mathrm{precision}@k$ under
+known capacity, which we adopt and to which we add a variance argument: a fixed budget has no
+threshold to estimate. Threshold selection is treated as a tuning detail in most applied work; we
+are not aware of prior work quantifying the in-sample selection penalty as a function of
+memorisation.
+
+\bibliographystyle{plainnat}
+\begin{thebibliography}{9}
+\small
+\bibitem[Elkan(2001)]{elkan2001}
+C.~Elkan. The foundations of cost-sensitive learning. \emph{IJCAI}, 2001.
+\bibitem[Provost and Fawcett(2001)]{provost2001}
+F.~Provost and T.~Fawcett. Robust classification for imprecise environments.
+\emph{Machine Learning}, 42(3):203--231, 2001.
+\bibitem[Bahnsen et al.(2014)]{bahnsen2014}
+A.~C. Bahnsen, D.~Aouada, and B.~Ottersten. Example-dependent cost-sensitive logistic regression
+for credit scoring. \emph{ICMLA}, 2014.
+\bibitem[GAO(2002)]{gao2002}
+U.S. General Accounting Office. Financial statement restatements: trends, market impacts,
+regulatory responses, and remaining challenges. GAO-03-138, 2002.
+\bibitem[Interim restatements(2025)]{interim2025}
+Interim restatements and the audit engagement. \emph{Journal of Accounting and Public Policy},
+2025.
+\bibitem[Consequentialist critique(2025)]{consequentialist2025}
+A consequentialist critique of binary classification evaluation: theory, practice, and tools.
+arXiv:2504.04528, 2025.
+\end{thebibliography}
+
+\end{document}

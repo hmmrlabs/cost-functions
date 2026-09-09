@@ -1,0 +1,97 @@
+[
+ {
+  "arm": "lookup / all years",
+  "base_rate": 0.1045,
+  "odds_of_negative": 8.5721,
+  "refusal_ratio": 302.376,
+  "c_star": 2592.0,
+  "at_fpr": 0.8486,
+  "at_tpr": 0.9995,
+  "fpr_at_recall": {
+   "0.9": 0.6666,
+   "0.95": 0.7555,
+   "0.98": 0.8028,
+   "0.99": 0.8154
+  },
+  "needed_refusal_ratio": {
+   "6.46": 0.754,
+   "10": 1.167
+  }
+ },
+ {
+  "arm": "lookup / 2021",
+  "base_rate": 0.4632,
+  "odds_of_negative": 1.159,
+  "refusal_ratio": 14.8835,
+  "c_star": 17.25,
+  "at_fpr": 0.886,
+  "at_tpr": 0.9923,
+  "fpr_at_recall": {
+   "0.9": 0.6893,
+   "0.95": 0.8512,
+   "0.98": 0.8777,
+   "0.99": 0.886
+  },
+  "needed_refusal_ratio": {
+   "6.46": 5.574,
+   "10": 8.628
+  }
+ },
+ {
+  "arm": "numeric / 2021",
+  "base_rate": 0.4676,
+  "odds_of_negative": 1.1386,
+  "refusal_ratio": 79.0435,
+  "c_star": 90.0,
+  "at_fpr": 0.8435,
+  "at_tpr": 0.998,
+  "fpr_at_recall": {
+   "0.9": 0.4348,
+   "0.95": 0.6139,
+   "0.98": 0.7287,
+   "0.99": 0.7791
+  },
+  "needed_refusal_ratio": {
+   "6.46": 5.674,
+   "10": 8.783
+  }
+ },
+ {
+  "arm": "words / 2021",
+  "base_rate": 0.4676,
+  "odds_of_negative": 1.1386,
+  "refusal_ratio": 30.7391,
+  "c_star": 35.0,
+  "at_fpr": 0.9391,
+  "at_tpr": 0.998,
+  "fpr_at_recall": {
+   "0.9": 0.3965,
+   "0.95": 0.6035,
+   "0.98": 0.7983,
+   "0.99": 0.833
+  },
+  "needed_refusal_ratio": {
+   "6.46": 5.674,
+   "10": 8.783
+  }
+ },
+ {
+  "arm": "embed / 2021",
+  "base_rate": 0.4676,
+  "odds_of_negative": 1.1386,
+  "refusal_ratio": 35.1304,
+  "c_star": 40.0,
+  "at_fpr": 0.9304,
+  "at_tpr": 0.998,
+  "fpr_at_recall": {
+   "0.9": 0.4661,
+   "0.95": 0.7113,
+   "0.98": 0.887,
+   "0.99": 0.9113
+  },
+  "needed_refusal_ratio": {
+   "6.46": 5.674,
+   "10": 8.783
+  }
+ }
+]
